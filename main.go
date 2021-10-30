@@ -39,32 +39,31 @@ const (
 
 func main() {
 	run(MyInfo{
-		domain:     "xxx.com",
-		key:        "",
-		secret:     "",
-		recordType: "A",
-		name:       "www",
-		ipserver: ipserver,
+
 	})
 }
 
 func run(info MyInfo) {
 	for {
-		oldIP, err := net.ResolveIPAddr("ip", info.name+"."+info.domain)
+		oldIP:="0.0.0.0"
+		oldIPAddr, err := net.ResolveIPAddr("ip", info.name+"."+info.domain)
+		if err == nil {
+			oldIP=oldIPAddr.String()
+		}
 		newIP, err1 := getNewAddress(info)
 		if err1 != nil {
 			time.Sleep(time.Minute)
 			continue
 		}
-		if err == nil || newIP == oldIP.String() {
+		if newIP == oldIP {
 			log.Println("ip不变")
 		} else {
 			fmt.Println("ip变化，正在更新dns记录")
 			err := updateDnsRecord(info, newIP)
 			if err != nil {
-				fmt.Printf("dns更新成功，旧地址：%s,新地址：%s\n", oldIP.String(), newIP)
-			} else {
 				fmt.Println(err)
+			} else {
+				fmt.Printf("dns更新成功，旧地址：%s,新地址：%s\n", oldIP, newIP)
 			}
 		}
 		time.Sleep(time.Minute)

@@ -7,12 +7,7 @@ import (
 
 func TestOne(t *testing.T) {
 	err := updateDnsRecord(MyInfo{
-		domain:     "xxx.com",
-		key:        "",
-		secret:     "",
-		recordType: "A",
-		name:       "www",
-		ipserver: ipserver,
+
 	},
 		"6.5.6.6")
 	if err != nil {
