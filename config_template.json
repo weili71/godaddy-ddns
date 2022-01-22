@@ -1,0 +1,8 @@
+{
+	"domain": "xxx.com",
+	"key": "godaddy key",
+	"secret": "godaddy secret",
+	"record_type": "A",
+	"name": "www",
+	"ip_server": "http://yyy.com"
+}
