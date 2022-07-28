@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/weili71/go-filex"
+	"github.com/wilinz/go-filex"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -37,9 +39,9 @@ type UpdateDnsBody struct {
 
 func main() {
 	programDir := filex.NewFile(os.Args[0]).Parent()
+	configFile := filex.NewFile1(programDir, "config.json")
 
-	templateConfigFile := filex.NewFile1(programDir, "config_template.json")
-	if !templateConfigFile.IsExist() {
+	if !configFile.IsExist() {
 		configTemplate, _ := json.Marshal(Config{
 			Domain:     "xxx.com",
 			Key:        "godaddy key",
@@ -50,20 +52,21 @@ func main() {
 		})
 
 		var out bytes.Buffer
-		err := json.Indent(&out, configTemplate, "", "\t")
+		err := json.Indent(&out, configTemplate, "", "    ")
 		if err != nil {
 			log.Panicln(err)
 			return
 		}
 
-		err = templateConfigFile.Write(out.Bytes(), 0777)
+		err = configFile.Write(out.Bytes(), 0777)
 		if err != nil {
 			log.Panicln(err)
 			return
 		}
+		fmt.Println("Please edit config.json first!")
+		return
 	}
 
-	configFile := filex.NewFile1(programDir, "config.json")
 	configBytes, err := configFile.ReadAll()
 	if err != nil {
 		log.Panicln(err)
@@ -108,6 +111,15 @@ func run(config Config) {
 }
 
 func getNewAddress(config Config) (string, error) {
+	if isInterface, _ := regexp.MatchString("^if://.*$", config.IpServer); isInterface {
+		ips, err := Ips()
+		if err != nil {
+			return "", err
+		}
+		name := strings.ReplaceAll(config.IpServer, "if://", "")
+		ip := ips[name]
+		return ip, nil
+	}
 	resp, err := http.Get(config.IpServer)
 	if err != nil {
 		return "", err
@@ -151,4 +163,33 @@ func updateDnsRecord(config Config, ip string) error {
 		return err1
 	}
 	return errors.New(string(respBytes))
+}
+
+func Ips() (map[string]string, error) {
+
+	ips := make(map[string]string)
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, i := range interfaces {
+		byName, err := net.InterfaceByName(i.Name)
+		if err != nil {
+			return nil, err
+		}
+		addresses, err := byName.Addrs()
+		for _, address := range addresses {
+			ipNet, isVailIpNet := address.(*net.IPNet)
+			// 检查ip地址判断是否回环地址
+			if isVailIpNet && !ipNet.IP.IsLoopback() {
+				if ipNet.IP.To4() != nil {
+					ips[byName.Name] = ipNet.IP.String()
+				}
+			}
+
+		}
+	}
+	return ips, nil
 }
