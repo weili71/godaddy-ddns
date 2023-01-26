@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/wilinz/go-filex"
 	"io/ioutil"
@@ -17,38 +16,50 @@ import (
 )
 
 type Config struct {
-	Domain     string `json:"domain,omitempty"`
-	Key        string `json:"key,omitempty"`
-	Secret     string `json:"secret,omitempty"`
-	RecordType string `json:"record_type,omitempty"`
-	Name       string `json:"name,omitempty"`
-	IpServer   string `json:"ip_server,omitempty"`
+	Server     string `json:"server"`
+	Domain     string `json:"domain"`
+	Email      string `json:"email"`
+	Key        string `json:"key"`
+	Secret     string `json:"secret"`
+	RecordType string `json:"record_type"`
+	Name       string `json:"name"`
+	IpServer   string `json:"ip_server"`
+	Proxy      bool   `json:"proxy"`
 }
 
-type Address struct {
-	IP   string `json:"IP"`
-	Port int    `json:"Port"`
-}
-
-type UpdateDnsBody struct {
-	Data string `json:"data"` //ip
-	Name string `json:"name"`
-	TTL  int    `json:"ttl"`
-	Type string `json:"type"`
-}
+const (
+	cloudflare = "cloudflare"
+	godaddy    = "godaddy"
+)
 
 func main() {
+	go func() {
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			w.Write([]byte("DDNS服务已运行"))
+		})
+		err := http.ListenAndServe(":20231", nil)
+		if err != nil {
+			log.Panic(err)
+			return
+		}
+	}()
 	programDir := filex.NewFile(os.Args[0]).Parent()
 	configFile := filex.NewFile1(programDir, "config.json")
 
+	fmt.Println("File path: " + configFile.Pathname)
+
 	if !configFile.IsExist() {
 		configTemplate, _ := json.Marshal(Config{
+			Server:     "godaddy or cloudflare",
 			Domain:     "xxx.com",
-			Key:        "godaddy key",
-			Secret:     "godaddy secret",
+			Email:      "xxx@xxx,com",
+			Key:        "key",
+			Secret:     "secret",
 			RecordType: "A",
 			Name:       "www",
-			IpServer:   "http://yyy.com",
+			IpServer:   "http://192.168.1.1:20230/wanip or if://pppoe-wan",
+			Proxy:      false,
 		})
 
 		var out bytes.Buffer
@@ -79,7 +90,7 @@ func main() {
 		log.Panicln(err)
 		return
 	}
-
+	fmt.Printf("%#v\n", config)
 	run(config)
 }
 
@@ -98,8 +109,14 @@ func run(config Config) {
 		if newIP == oldIP {
 			log.Println("ip不变")
 		} else {
-			fmt.Println("ip变化，正在更新dns记录")
-			err := updateDnsRecord(config, newIP)
+			fmt.Printf("ip变化，正在更新dns记录，旧地址：%s,新地址：%s\n", oldIP, newIP)
+			if config.Server == cloudflare {
+				err = runCloudflare(config, newIP)
+			} else if config.Server == godaddy {
+				err = runGodaddy(config, newIP)
+			} else {
+				log.Panic("配置服务商错误")
+			}
 			if err != nil {
 				fmt.Println(err)
 			} else {
@@ -128,41 +145,8 @@ func getNewAddress(config Config) (string, error) {
 	if err1 != nil {
 		return "", err1
 	}
-	newAddress := Address{}
-	err2 := json.Unmarshal(respBytes, &newAddress)
-	if err2 != nil {
-		return "", err2
-	}
-	return newAddress.IP, nil
-}
-
-func updateDnsRecord(config Config, ip string) error {
-	url := fmt.Sprintf("https://api.godaddy.com/v1/domains/%s/records/%s/%s", config.Domain, config.RecordType, config.Name)
-	updateDnsBody := []UpdateDnsBody{{
-		Data: ip,
-		Name: "home",
-		TTL:  600,
-		Type: "A",
-	}}
-
-	updateDnsBodyBytes, _ := json.Marshal(updateDnsBody)
-	req, _ := http.NewRequest("PUT", url, bytes.NewReader(updateDnsBodyBytes))
-	req.Header.Set("Authorization", fmt.Sprintf("sso-key %s:%s", config.Key, config.Secret))
-	req.Header.Set("Content-Type", "application/json")
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode == 200 {
-		return nil
-	}
-
-	respBytes, err1 := ioutil.ReadAll(resp.Body)
-	if err1 != nil {
-		return err1
-	}
-	return errors.New(string(respBytes))
+	newAddress := string(respBytes)
+	return newAddress, nil
 }
 
 func Ips() (map[string]string, error) {

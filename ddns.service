@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+
+start() {
+       echo "Starting ddns at $(date)" >> /tmp/ddns.log
+       /root/ddns &
+}
+
+stop() {
+       echo "Stopping ddns at $(date)" >> /tmp/ddns.log
+       killall ddns
+}
+
+restart() {
+       stop
+       sleep 1
+       start
+}
